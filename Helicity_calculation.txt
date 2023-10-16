@@ -1,0 +1,59 @@
+﻿CutN3 << <dimGridZ, dimBlock >> > (UXv);
+CutN3 << <dimGridZ, dimBlock >> > (UYv);
+CutN3 << <dimGridZ, dimBlock >> > (UZv);
+				cudaThreadSynchronize();
+				
+cufftExecZ2D(planinverse, UXv, UX);
+cufftExecZ2D(planinverse, UYv, UY);
+cufftExecZ2D(planinverse, UZv, UZ);
+				cudaThreadSynchronize();
+
+CutN3 << <dimGridZ, dimBlock >> > (BXv);
+CutN3 << <dimGridZ, dimBlock >> > (BYv);
+CutN3 << <dimGridZ, dimBlock >> > (BZv);
+				cudaThreadSynchronize();
+cufftExecZ2D(planinverse, BXv, BX);
+cufftExecZ2D(planinverse, BYv, BY);
+cufftExecZ2D(planinverse, BZv, BZ);
+				cudaThreadSynchronize();
+
+				
+	CrossHelicity <<< dimGrid, dimBlock >>> (UX, UY, UZ, BX, BY, BZ, AiD);		
+				cudaThreadSynchronize();
+	cufftExecD2Z(plan, AiD, DXv);
+				cudaThreadSynchronize();			
+				
+				//иксовая компонента	
+Ddy << < dimGridZ, dimBlock >> > (UZv, dUv);
+				cudaThreadSynchronize();
+cufftExecZ2D(planinverse, dUv, d1U);
+				cudaThreadSynchronize();
+Ddz << < dimGridZ, dimBlock >> > (UYv, dUv);
+				cudaThreadSynchronize();
+cufftExecZ2D(planinverse, dUv, d2U);
+				cudaThreadSynchronize();
+				
+				//игрековая компонента
+Ddz << < dimGridZ, dimBlock >> > (UXv, dUv);
+				cudaThreadSynchronize();
+cufftExecZ2D(planinverse, dUv, d3U);
+				cudaThreadSynchronize();
+Ddx << < dimGridZ, dimBlock >> > (UZv, dUv);
+				cudaThreadSynchronize();
+cufftExecZ2D(planinverse, dUv, d4U);
+				cudaThreadSynchronize();
+				
+				//зетовая компонента
+Ddx << < dimGridZ, dimBlock >> > (UYv, dUv);
+				cudaThreadSynchronize();
+cufftExecZ2D(planinverse, dUv, d5U);
+				cudaThreadSynchronize();
+Ddy << < dimGridZ, dimBlock >> > (UXv, dUv);
+				cudaThreadSynchronize();
+cufftExecZ2D(planinverse, dUv, d6U);
+				cudaThreadSynchronize();
+
+		Helicity	<<< dimGrid, dimBlock >>> (UX, UY, UZ, d1U, d2U, d3U, d4U, d5U, d6U, AiD);	
+				cudaThreadSynchronize();
+		cufftExecD2Z(plan, AiD, AXv);
+				cudaThreadSynchronize();		

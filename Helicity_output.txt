@@ -1,0 +1,286 @@
+﻿				///////////////////////////////////////////////
+				//вывод начальных условий(Тут не проставлено автоматическое присвоение директории, которое есть в основном файле)
+				///////////////////////////////////////////////
+
+if (vivodhelicity)
+	{
+		start_time = clock()/CLOCKS_PER_SEC;
+				///////////////////////////////////////////////
+				// расчет перекрестной спиральности
+				///////////////////////////////////////////////
+		CutN3 << <dimGridZ, dimBlock >> > (UXv);
+		CutN3 << <dimGridZ, dimBlock >> > (UYv);
+		CutN3 << <dimGridZ, dimBlock >> > (UZv);
+				cudaThreadSynchronize();
+				
+		cufftExecZ2D(planinverse, UXv, UX);
+		cufftExecZ2D(planinverse, UYv, UY);
+		cufftExecZ2D(planinverse, UZv, UZ);
+				cudaThreadSynchronize();
+
+		CutN3 << <dimGridZ, dimBlock >> > (BXv);
+		CutN3 << <dimGridZ, dimBlock >> > (BYv);
+		CutN3 << <dimGridZ, dimBlock >> > (BZv);
+				cudaThreadSynchronize();
+		cufftExecZ2D(planinverse, BXv, BX);
+		cufftExecZ2D(planinverse, BYv, BY);
+		cufftExecZ2D(planinverse, BZv, BZ);
+				cudaThreadSynchronize();
+
+				
+	CrossHelicity <<< dimGrid, dimBlock >>> (UX, UY, UZ, BX, BY, BZ, AiD);		
+				cudaThreadSynchronize();
+	cufftExecD2Z(plan, AiD, DXv);
+				cudaThreadSynchronize();			
+				
+				///////////////////////////////////////////////
+				//расчет спиральност
+				///////////////////////////////////////////////
+				
+				///////////////////////////////////////////////
+				//иксовая компонента(производные, умножаемые на соответствующую компоненту Ux)	
+				///////////////////////////////////////////////
+		Ddy << < dimGridZ, dimBlock >> > (UZv, dUv);
+				cudaThreadSynchronize();
+		cufftExecZ2D(planinverse, dUv, d1U);
+				cudaThreadSynchronize();
+		Ddz << < dimGridZ, dimBlock >> > (UYv, dUv);
+				cudaThreadSynchronize();
+		cufftExecZ2D(planinverse, dUv, d2U);
+				cudaThreadSynchronize();
+				
+				///////////////////////////////////////////////
+				//игрековая компонента(производные, умножаемые на соответствующую компоненту Ux)
+				///////////////////////////////////////////////
+		Ddz << < dimGridZ, dimBlock >> > (UXv, dUv);
+				cudaThreadSynchronize();
+		cufftExecZ2D(planinverse, dUv, d3U);
+				cudaThreadSynchronize();
+		Ddx << < dimGridZ, dimBlock >> > (UZv, dUv);
+				cudaThreadSynchronize();
+		cufftExecZ2D(planinverse, dUv, d4U);
+				cudaThreadSynchronize();
+				
+				///////////////////////////////////////////////
+				//зетовая компонента(производные, умножаемые на соответствующую компоненту Ux)
+				///////////////////////////////////////////////
+		Ddx << < dimGridZ, dimBlock >> > (UYv, dUv);
+				cudaThreadSynchronize();
+		cufftExecZ2D(planinverse, dUv, d5U);
+				cudaThreadSynchronize();
+		Ddy << < dimGridZ, dimBlock >> > (UXv, dUv);
+				cudaThreadSynchronize();
+		cufftExecZ2D(planinverse, dUv, d6U);
+				cudaThreadSynchronize();
+
+		Helicity	<<< dimGrid, dimBlock >>> (UX, UY, UZ, d1U, d2U, d3U, d4U, d5U, d6U, AiD);	
+				cudaThreadSynchronize();
+		cufftExecD2Z(plan, AiD, AXv);
+				cudaThreadSynchronize();		
+		
+		
+				///////////////////////////////////////////////
+				//вывод и расчет спектров
+				///////////////////////////////////////////////
+		
+		
+		Sumforen << <dimGridZ, dimBlock >> > (AXv, Ukx);
+		Sumforen << <dimGridZ, dimBlock >> > (DXv, Uky);
+		cudaThreadSynchronize();
+		
+		cudaMemcpy(ukx, h_Ukx, N*N*(N / 2 + 1) * sizeof(cufftDoubleReal), cudaMemcpyHostToHost);
+		cudaMemcpy(uky, h_Uky, N*N*(N / 2 + 1) * sizeof(cufftDoubleReal), cudaMemcpyHostToHost);
+		
+		cudaThreadSynchronize(); 
+		
+		Null1(ex, Nl);
+		Null1(ey, Nl);
+		
+
+		for (int i = 0; i < Nl; i++)
+			for (int ix = 0; ix < N / 3; ix += 1)
+				for (int iy = 0; iy < N / 3; iy += 1)
+					for (int iz = 0; iz < N / 3; iz += 1)
+						if (WN[i] == ix*ix + iy*iy + iz*iz)
+						{
+							id1 = (ix*N + iy)*(N / 2 + 1) + iz;
+							id2 = ((-ix + N)*N + iy)*(N / 2 + 1) + iz;
+							id3 = (ix*N + (-iy + N))*(N / 2 + 1) + iz;
+							id4 = ((-ix + N)*N + (-iy + N))*(N / 2 + 1) + iz;
+							ex[i] += ukx[id1] + ukx[id2] + ukx[id3] + ukx[id4];
+							ey[i] += uky[id1] + uky[id2] + uky[id3] + uky[id4];
+						}
+						
+		ex[0] /= 4.0;
+		ey[0] /= 4.0;
+
+		strcpy(file, "/mnt/data2/256/HelicitySP0.dat");
+		out1 = fopen(file, "w+");
+
+		strcpy(file, "/mnt/data2/256/CrossHelicitySP0.dat");
+		out2 = fopen(file, "w+");
+
+
+		for (int i = 0; i < Nl; i++)
+		{
+			fprintf(out1, "%.8e\n", ex[i]);
+		}
+		for (int i = 0; i < Nl; i++)
+		{
+			fprintf(out2, "%.8e\n", ey[i]);
+		}
+		
+		fclose(out1);
+		fclose(out2);
+
+		
+		end_time = clock()/CLOCKS_PER_SEC;//конечное время ввода данных
+		cout << "Calculation of helicity spectra and data transfer to disk made in " << double(end_time - start_time) << " sek" << endl;
+	}
+	
+	
+				///////////////////////////////////////////////
+				//вывод в процессе
+				///////////////////////////////////////////////
+
+	if ((vivodhelicity) && (T>Nk))
+	{
+		start_time = clock()/CLOCKS_PER_SEC;
+				///////////////////////////////////////////////
+				// расчет перекрестной спиральности
+				///////////////////////////////////////////////
+		CutN3 << <dimGridZ, dimBlock >> > (UXv);
+		CutN3 << <dimGridZ, dimBlock >> > (UYv);
+		CutN3 << <dimGridZ, dimBlock >> > (UZv);
+				cudaThreadSynchronize();
+				
+		cufftExecZ2D(planinverse, UXv, UX);
+		cufftExecZ2D(planinverse, UYv, UY);
+		cufftExecZ2D(planinverse, UZv, UZ);
+				cudaThreadSynchronize();
+
+		CutN3 << <dimGridZ, dimBlock >> > (BXv);
+		CutN3 << <dimGridZ, dimBlock >> > (BYv);
+		CutN3 << <dimGridZ, dimBlock >> > (BZv);
+				cudaThreadSynchronize();
+		cufftExecZ2D(planinverse, BXv, BX);
+		cufftExecZ2D(planinverse, BYv, BY);
+		cufftExecZ2D(planinverse, BZv, BZ);
+				cudaThreadSynchronize();
+
+				
+	CrossHelicity <<< dimGrid, dimBlock >>> (UX, UY, UZ, BX, BY, BZ, AiD);		
+				cudaThreadSynchronize();
+	cufftExecD2Z(plan, AiD, DXv);
+				cudaThreadSynchronize();			
+				
+				///////////////////////////////////////////////
+				//расчет спиральност
+				///////////////////////////////////////////////
+				
+				///////////////////////////////////////////////
+				//иксовая компонента(производные, умножаемые на соответствующую компоненту Ux)	
+				///////////////////////////////////////////////
+		Ddy << < dimGridZ, dimBlock >> > (UZv, dUv);
+				cudaThreadSynchronize();
+		cufftExecZ2D(planinverse, dUv, d1U);
+				cudaThreadSynchronize();
+		Ddz << < dimGridZ, dimBlock >> > (UYv, dUv);
+				cudaThreadSynchronize();
+		cufftExecZ2D(planinverse, dUv, d2U);
+				cudaThreadSynchronize();
+				
+				///////////////////////////////////////////////
+				//игрековая компонента(производные, умножаемые на соответствующую компоненту Ux)
+				///////////////////////////////////////////////
+		Ddz << < dimGridZ, dimBlock >> > (UXv, dUv);
+				cudaThreadSynchronize();
+		cufftExecZ2D(planinverse, dUv, d3U);
+				cudaThreadSynchronize();
+		Ddx << < dimGridZ, dimBlock >> > (UZv, dUv);
+				cudaThreadSynchronize();
+		cufftExecZ2D(planinverse, dUv, d4U);
+				cudaThreadSynchronize();
+				
+				///////////////////////////////////////////////
+				//зетовая компонента(производные, умножаемые на соответствующую компоненту Ux)
+				///////////////////////////////////////////////
+		Ddx << < dimGridZ, dimBlock >> > (UYv, dUv);
+				cudaThreadSynchronize();
+		cufftExecZ2D(planinverse, dUv, d5U);
+				cudaThreadSynchronize();
+		Ddy << < dimGridZ, dimBlock >> > (UXv, dUv);
+				cudaThreadSynchronize();
+		cufftExecZ2D(planinverse, dUv, d6U);
+				cudaThreadSynchronize();
+
+		Helicity	<<< dimGrid, dimBlock >>> (UX, UY, UZ, d1U, d2U, d3U, d4U, d5U, d6U, AiD);	
+				cudaThreadSynchronize();
+		cufftExecD2Z(plan, AiD, AXv);
+				cudaThreadSynchronize();		
+		
+		
+				///////////////////////////////////////////////
+				//вывод и расчет спектров
+				///////////////////////////////////////////////
+		
+		
+		Sumforen << <dimGridZ, dimBlock >> > (AXv, Ukx);
+		Sumforen << <dimGridZ, dimBlock >> > (DXv, Uky);
+		cudaThreadSynchronize();
+		
+		cudaMemcpy(ukx, h_Ukx, N*N*(N / 2 + 1) * sizeof(cufftDoubleReal), cudaMemcpyHostToHost);
+		cudaMemcpy(uky, h_Uky, N*N*(N / 2 + 1) * sizeof(cufftDoubleReal), cudaMemcpyHostToHost);
+		
+		cudaThreadSynchronize(); 
+		
+		Null1(ex, Nl);
+		Null1(ey, Nl);
+		
+
+		for (int i = 0; i < Nl; i++)
+			for (int ix = 0; ix < N / 3; ix += 1)
+				for (int iy = 0; iy < N / 3; iy += 1)
+					for (int iz = 0; iz < N / 3; iz += 1)
+						if (WN[i] == ix*ix + iy*iy + iz*iz)
+						{
+							id1 = (ix*N + iy)*(N / 2 + 1) + iz;
+							id2 = ((-ix + N)*N + iy)*(N / 2 + 1) + iz;
+							id3 = (ix*N + (-iy + N))*(N / 2 + 1) + iz;
+							id4 = ((-ix + N)*N + (-iy + N))*(N / 2 + 1) + iz;
+							ex[i] += ukx[id1] + ukx[id2] + ukx[id3] + ukx[id4];
+							ey[i] += uky[id1] + uky[id2] + uky[id3] + uky[id4];
+						}
+						
+		ex[0] /= 4.0;
+		ey[0] /= 4.0;
+
+		strcpy(file, "/mnt/data2/256/HelicitySP");
+		sprintf(dir,"%d",NNk2);
+		strncat(file, dir, 10);
+		strncat(file, ".dat", 80);
+		out1 = fopen(file, "w+");
+
+		strcpy(file, "/mnt/data2/256/CrossHelicitySP");
+		sprintf(dir,"%d",NNk2);
+		strncat(file, dir, 10);
+		strncat(file, ".dat", 80);
+		out2 = fopen(file, "w+");
+
+
+		for (int i = 0; i < Nl; i++)
+		{
+			fprintf(out1, "%.8e\n", ex[i]);
+		}
+		for (int i = 0; i < Nl; i++)
+		{
+			fprintf(out2, "%.8e\n", ey[i]);
+		}
+		
+		fclose(out1);
+		fclose(out2);
+
+		
+		end_time = clock()/CLOCKS_PER_SEC;//конечное время ввода данных
+		cout << "Calculation of helicity spectra and data transfer to disk made in " << double(end_time - start_time) << " sek" << endl;
+	}
